@@ -27,7 +27,25 @@ import torch
 from . import pdl_supported
 
 from vllm.models.inkling2.nvidia.ops.norm import qr_clip_rel_tokens, rsqrt
+from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
+
+# Senza la conversione hardware E4M3 (SM89+) la KV fp8 si codifica con operazioni sui bit (Ampere).
+_FP8_EMU = tl.constexpr(not current_platform.has_device_capability(89))
+
+
+@triton.jit
+def _f32_to_e4m3(y):
+    """Codifica software fp32 -> E4M3 (byte in int32), arrotondamento al più vicino pari e saturazione a 448.
+    Sottonormali (< 2^-6): multiplo di 2^-9 con rint; normali: si arrotondano i bit dell'fp32 (il riporto
+    della mantissa sale nell'esponente)."""
+    y = tl.minimum(tl.maximum(y, -448.0), 448.0)
+    bits = y.to(tl.int32, bitcast=True)
+    mag = bits & 0x7FFFFFFF
+    normal = ((mag - (120 << 23)) + 0x7FFFF + ((mag >> 20) & 1)) >> 20
+    sub = tl.extra.cuda.libdevice.rint(tl.abs(y) * 512.0).to(tl.int32)
+    r = tl.where(mag >= (121 << 23), normal, sub)
+    return ((bits >> 24) & 0x80) | tl.minimum(r, 0x7E)
 
 
 @triton.jit
@@ -812,7 +830,14 @@ def _kv_conv_tile(
         + head * stride_kv_h
         + d_idx[None, :]
     )
-    tl.store(dst, y.to(cache.dtype.element_ty), mask=(kv_slot >= 0)[:, None])
+    if cache.dtype.element_ty.primitive_bitwidth == 8 and _FP8_EMU:
+        # E4M3 senza conversione hardware (Ampere): arrotondamento al più vicino pari sui bit dell fp32.
+        code = _f32_to_e4m3(y).to(tl.uint8)
+        tl.store(
+            dst.to(tl.pointer_type(tl.uint8)), code, mask=(kv_slot >= 0)[:, None]
+        )
+    else:
+        tl.store(dst, y.to(cache.dtype.element_ty), mask=(kv_slot >= 0)[:, None])
 
 
 # From this many tokens, q/r run in their own launch (8 tokens per program)

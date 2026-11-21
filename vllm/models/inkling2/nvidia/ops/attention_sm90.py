@@ -15,6 +15,7 @@ holds for every replay of a CUDA graph.
 """
 
 import torch
+from vllm.platforms import current_platform
 
 from vllm.triton_utils import tl, triton
 
@@ -34,6 +35,18 @@ def _sigmoid(x):
     return 1.0 / (1.0 + tl.exp2(-x * 1.4426950408889634))
 
 
+# Senza la conversione hardware E4M3 (SM89+) la KV fp8 si decodifica con operazioni sui bit (Ampere).
+_FP8_EMU = tl.constexpr(not current_platform.has_device_capability(89))
+
+
+@triton.jit
+def _e4m3_to_f16(b):
+    """Decodifica software di E4M3 (byte in int32) in fp16: i 7 bit di modulo, spostati nel campo
+    esponente+mantissa di un fp16, valgono v/256 (differenza dei bias, 15 - 7 = 8), sottonormali inclusi."""
+    h = ((b & 0x7F) << 7) | ((b & 0x80) << 8)
+    return h.to(tl.int16).to(tl.float16, bitcast=True) * 256.0
+
+
 @triton.jit
 def _load_fp8_kv(ptr, offsets, mask, dtype: tl.constexpr, D: tl.constexpr):
     # Load each E4M3 pair once, retaining 16-bit packing for BF16 MMA order.
@@ -45,14 +58,19 @@ def _load_fp8_kv(ptr, offsets, mask, dtype: tl.constexpr, D: tl.constexpr):
         mask=mask[:, None],
         other=0,
     )
-    lo, hi = tl.inline_asm_elementwise(
-        "{ .reg .b32 pair; cvt.rn.f16x2.e4m3x2 pair, $2; mov.b32 {$0, $1}, pair; }",
-        "=h,=h,h",
-        [pair],
-        dtype=(tl.float16, tl.float16),
-        is_pure=True,
-        pack=1,
-    )
+    if _FP8_EMU:
+        wide = pair.to(tl.int32)
+        lo = _e4m3_to_f16(wide & 0xFF)
+        hi = _e4m3_to_f16((wide >> 8) & 0xFF)
+    else:
+        lo, hi = tl.inline_asm_elementwise(
+            "{ .reg .b32 pair; cvt.rn.f16x2.e4m3x2 pair, $2; mov.b32 {$0, $1}, pair; }",
+            "=h,=h,h",
+            [pair],
+            dtype=(tl.float16, tl.float16),
+            is_pure=True,
+            pack=1,
+        )
     return tl.interleave(lo, hi).to(dtype)
 
 

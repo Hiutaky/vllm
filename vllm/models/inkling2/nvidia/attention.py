@@ -293,6 +293,9 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
         supported: tuple[str, ...] = ("auto", "bfloat16")
         if current_platform.is_device_capability_family(120):
             supported += ("float16", "fp8", "fp8_e4m3")
+        elif not use_sm100_kernels():
+            # Hopper e Ampere leggono e scrivono la KV con rel_attention (Ampere: E4M3 emulato sui bit).
+            supported += ("fp8", "fp8_e4m3")
         if cache_dtype not in supported:
             raise ValueError(f"Inkling2 KV cache dtype must be one of {supported}")
         self.fp8_kv = cache_dtype in ("fp8", "fp8_e4m3")
@@ -352,7 +355,13 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.fp8_kv:
             # Every loop pass owns byte storage containing unit-scale E4M3 KV.
-            kv_cache = kv_cache.view(torch.float8_e4m3fn)
+            # Senza la conversione hardware E4M3 (SM89+) Triton non accetta il tipo fp8: byte grezzi,
+            # codificati e decodificati dai kernel (_FP8_EMU).
+            kv_cache = kv_cache.view(
+                torch.float8_e4m3fn
+                if current_platform.has_device_capability(89)
+                else torch.uint8
+            )
         key_cache, value_cache = kv_cache.transpose(1, 2).split(self.head_dim, dim=-1)
         return (
             canonicalize_singleton_dim_strides(key_cache),
