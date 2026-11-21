@@ -7,6 +7,8 @@ top-k combine.
 
 import torch
 
+from . import pdl_supported
+
 from vllm.triton_utils import tl, tldevice, triton
 
 from .block_scales import _scale_offsets
@@ -971,7 +973,7 @@ def route(
             num_stages=4,
             enable_fp_fusion=False,
             launch_cooperative_grid=True,
-            launch_pdl=True,
+            launch_pdl=pdl_supported(),
         )
         return outputs, quantized
 
@@ -1002,7 +1004,7 @@ def route(
         TILE=plan.tile,
         MAX_CTAS=plan.max_ctas,
         num_warps=4 if tokens <= 128 else 1,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     if nvfp4 and tokens >= NVFP4_SCATTER_MIN_TOKENS:
         _scatter_nvfp4_kernel[(tokens,)](
@@ -1023,7 +1025,7 @@ def route(
             TILE=plan.tile,
             num_warps=1,
             enable_fp_fusion=False,
-            launch_pdl=True,
+            launch_pdl=pdl_supported(),
         )
         return outputs, quantized
     _scatter_kernel[(tokens,)](
@@ -1049,7 +1051,7 @@ def route(
         LAUNCH_DEPENDENTS=tokens <= LAUNCH_DEPENDENTS_MAX_TOKENS,
         num_warps=2,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     return outputs, quantized
 
@@ -1142,5 +1144,5 @@ def _combine(
         sp is not None,
         HALO_ROWS,
         num_warps=2,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )

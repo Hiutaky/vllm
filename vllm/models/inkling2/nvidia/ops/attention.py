@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 import torch
 
+from . import pdl_supported
+
 from vllm.config import VllmConfig
 from vllm.distributed import get_tensor_model_parallel_world_size
 from vllm.model_executor.warmup.jit_warmup import VllmJitKernel
@@ -333,7 +335,7 @@ def gate_sink(
         width // num_heads,
         512,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
 
 
@@ -1295,7 +1297,7 @@ def _decode_attention(
         BLOCK_D=block_d,
         GATED=not draft,
         num_warps=num_warps,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
 
 
@@ -1377,5 +1379,5 @@ def _launch_rel_verify(
         DRAFT=draft,
         WINDOW=window,
         num_warps=4,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )

@@ -5,6 +5,8 @@ input quantization."""
 
 import torch
 
+from . import pdl_supported
+
 from vllm.triton_utils import tl, tldevice, triton
 
 from .mxfp8 import _mxfp8_block, _store_mxfp8_block
@@ -273,6 +275,6 @@ def swiglu_quantize(
         num_warps=num_warps,
         maxnreg=maxnreg,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     return values, scales, row_scales

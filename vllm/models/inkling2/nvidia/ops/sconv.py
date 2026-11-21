@@ -24,6 +24,8 @@ RMS-normalizes V per head and writes both to the paged KV cache.
 
 import torch
 
+from . import pdl_supported
+
 from vllm.models.inkling2.nvidia.ops.norm import qr_clip_rel_tokens, rsqrt
 from vllm.triton_utils import tl, triton
 
@@ -458,7 +460,7 @@ def short_conv(
         SKIP_IDLE_CACHE=prefill,
         num_warps=4,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     return out
 
@@ -980,7 +982,7 @@ def attention_prologue(
         FUSE_QR=not qr_tokens,
         num_warps=4,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     if qr_tokens:
         _qr_rel_kernel[(triton.cdiv(num_tokens, qr_tokens), qr_blocks)](
@@ -1012,5 +1014,5 @@ def attention_prologue(
             QR_TOKENS=qr_tokens,
             num_warps=4,
             enable_fp_fusion=False,
-            launch_pdl=True,
+            launch_pdl=pdl_supported(),
         )

@@ -5,6 +5,8 @@ reference `linear` with fp32 accumulation in ordered 1024-wide K groups."""
 
 import torch
 
+from . import pdl_supported
+
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils.flashinfer import is_flashinfer_autotuning
@@ -233,7 +235,7 @@ def k_group_partials(
             num_warps=4 if block_n == 64 else 8,
             num_stages=4 if block_n == 64 else 3,
             enable_fp_fusion=False,
-            launch_pdl=True,
+            launch_pdl=pdl_supported(),
         )
         return out
     block_m = 16 if tokens <= 128 else 64
@@ -267,7 +269,7 @@ def k_group_partials(
         num_warps=num_warps,
         num_stages=num_stages,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     return out
 
@@ -285,6 +287,6 @@ def linear_k_groups(
         return partials[0]
     out = torch.empty(partials.shape[1:], dtype=out_dtype, device=x.device)
     _k_group_sum_kernel[(triton.cdiv(out.numel(), 1024),)](
-        partials, out, out.numel(), partials.shape[0], 1024, launch_pdl=True
+        partials, out, out.numel(), partials.shape[0], 1024, launch_pdl=pdl_supported()
     )
     return out

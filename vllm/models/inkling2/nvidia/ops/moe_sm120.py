@@ -8,6 +8,8 @@ R8c4/R128c4 layout and its four-or-six quantization and outer row scales.
 
 import torch
 
+from . import pdl_supported
+
 from vllm.triton_utils import tl, triton
 
 from .block_scales import _scale_offsets
@@ -198,7 +200,7 @@ def bmm(
             BK=128,
             num_warps=num_warps,
             num_stages=3,
-            launch_pdl=True,
+            launch_pdl=pdl_supported(),
         )
         return out
     assert weight.dtype == torch.uint8

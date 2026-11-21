@@ -6,6 +6,8 @@ import math
 
 import torch
 
+from . import pdl_supported
+
 from vllm.triton_utils import tl, tldevice, triton
 
 from .block_scales import _scale_offsets
@@ -80,6 +82,6 @@ def mxfp8_quantize(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         N=n,
         BLOCK=block,
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     return values, scales

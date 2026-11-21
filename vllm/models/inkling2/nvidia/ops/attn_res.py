@@ -12,6 +12,8 @@ returned as is (fp32) without a norm weight.
 
 import torch
 
+from . import pdl_supported
+
 from vllm.models.inkling2.nvidia.ops.norm import rsqrt
 from vllm.triton_utils import tl, tldevice, triton
 
@@ -291,7 +293,7 @@ def attn_res(
         APPLY_NORM=apply_norm,
         BLOCK_N=triton.next_power_of_2(num_stack + 1),
         enable_fp_fusion=False,
-        launch_pdl=True,
+        launch_pdl=pdl_supported(),
     )
     # The queries of a token run back to back and share its sources in L2.
     grid = (num_q, num_tokens)
