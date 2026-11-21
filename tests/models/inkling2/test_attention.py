@@ -16,9 +16,16 @@ from vllm.platforms import current_platform
 
 _cap = current_platform.get_device_capability() if current_platform.is_cuda() else None
 requires_sm90 = pytest.mark.skipif(
-    _cap is None or _cap.major not in (9, 10, 11, 12),
-    reason="Inkling2 attention requires Hopper or Blackwell",
+    _cap is None or _cap.major not in (8, 9, 10, 11, 12),
+    reason="Inkling2 attention requires Ampere, Hopper or Blackwell",
 )
+
+# The E4M3 conversions (`cvt.*.e4m3x2`) need SM89+; Ampere (SM86) runs BF16/FP16 KV only.
+no_e4m3 = pytest.mark.skipif(
+    _cap is not None and _cap.major * 10 + _cap.minor < 89,
+    reason="E4M3 KV needs SM89 or newer",
+)
+FP8_KV = pytest.param(torch.float8_e4m3fn, marks=no_e4m3)
 
 HEAD_DIM = 128
 REL_EXTENT = 1024
@@ -94,6 +101,7 @@ def _ref_attention(
 
 
 @requires_sm90
+@no_e4m3
 def test_e4m3_kv_load_preserves_all_byte_values_and_masks():
     from vllm.models.inkling2.nvidia.ops.attention_sm90 import _load_fp8_kv
     from vllm.triton_utils import tl, triton
@@ -116,7 +124,7 @@ def test_e4m3_kv_load_preserves_all_byte_values_and_masks():
 
 
 @requires_sm90
-@pytest.mark.parametrize("cache_dtype", [torch.float16, torch.float8_e4m3fn])
+@pytest.mark.parametrize("cache_dtype", [torch.float16, FP8_KV])
 @pytest.mark.parametrize("query_len,splits", [(37, 1), (1, 1), (1, 3), (8, 1), (8, 3)])
 @pytest.mark.parametrize("window", [0, 1024])
 @torch.inference_mode()

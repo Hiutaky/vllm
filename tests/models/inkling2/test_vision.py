@@ -19,8 +19,8 @@ from vllm.models.inkling2.nvidia.vision import (
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available()
-    or torch.cuda.get_device_capability()[0] not in (9, 10, 12),
-    reason="needs a Hopper or Blackwell GPU",
+    or torch.cuda.get_device_capability()[0] not in (8, 9, 10, 12),
+    reason="needs an Ampere, Hopper or Blackwell GPU",
 )
 
 CONFIG = {
@@ -187,4 +187,10 @@ def test_cuda_graph_replay_matches_eager():
     graph.replay()
 
     eager = enc(mm_kwargs["vision_pixels"], mm_kwargs["vision_grid_thw"])
-    assert torch.equal(out[: eager.shape[0]], eager)
+    got = out[: eager.shape[0]]
+    if torch.cuda.get_device_capability()[0] < 9:
+        # On Ampere cuBLAS picks other tilings for the padded and the real
+        # token counts, so the replay only matches to bf16 rounding.
+        torch.testing.assert_close(got, eager, atol=2e-3, rtol=2e-2)
+    else:
+        assert torch.equal(got, eager)
