@@ -15,9 +15,10 @@ class Inkling2DSparkSpeculatorConfig(DSparkSpeculatorConfig):
     @classmethod
     def adapt_draft_model_config(cls, spec: "SpeculativeConfig") -> None:
         super().adapt_draft_model_config(spec)
-        if current_platform.is_device_capability_family(120):
+        if current_platform.is_device_capability_family(120) or not current_platform.has_device_capability(89):
             # The target's clipped, unit-scale FP8 cache does not describe the
-            # draft's unnormalized values. Keep the draft cache in BF16.
+            # draft's unnormalized values. Keep the draft cache in BF16 (on pre-SM89 the
+            # draft's FA2 cannot read E4M3 at all).
             if spec.kv_cache_dtype is None:
                 spec.kv_cache_dtype = "auto"
             elif spec.kv_cache_dtype not in ("auto", "bfloat16"):
