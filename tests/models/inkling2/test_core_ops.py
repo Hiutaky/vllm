@@ -547,7 +547,18 @@ def test_attention_prologue_writes_clipped_k_and_normed_v(dynamic, split, monkey
     assert (cache[..., : 2 * dim] != 0).any(-1).sum() == num_tokens * heads
 
 
-@pytest.mark.parametrize("cache_dtype", [torch.float16, torch.float8_e4m3fn])
+@pytest.mark.parametrize("cache_dtype", [
+        torch.float16,
+        pytest.param(
+            torch.float8_e4m3fn,
+            marks=pytest.mark.skipif(
+                torch.cuda.is_available()
+                and torch.cuda.get_device_capability() < (8, 9),
+                reason="E4M3 KV needs SM89 or newer",
+            ),
+        ),
+    ],
+)
 def test_attention_prologue_stores_low_precision_kv_without_touching_padding(
     cache_dtype,
 ):

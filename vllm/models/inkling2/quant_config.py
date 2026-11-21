@@ -43,7 +43,8 @@ class Inkling2QuantConfig(QuantizationConfig):
 
     @classmethod
     def get_min_capability(cls) -> int:
-        return 90
+        # Ampere (SM80+) is supported through the Triton / Humming fallbacks.
+        return 80
 
     @staticmethod
     def get_config_filenames() -> list[str]:
