@@ -31,6 +31,7 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding,
 )
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.model_executor.offloader import get_offloader
 from vllm.model_executor.models.interfaces import (
     MultiModalEmbeddings,
     SupportsEagle3,
@@ -258,6 +259,11 @@ class Inkling2Model(nn.Module):
         self.normalize_values = config.attn_res_normalize_values
         self.embed_tokens = VocabParallelEmbedding(
             config.padded_vocab_size, config.hidden_size
+        )
+        # La tabella degli embedding (883 MiB in bf16) si legge a righe: con `--cpu-offload-params embed_tokens`
+        # può stare in memoria CPU (UVA) e liberare VRAM per la KV. L'offloader agisce solo sui moduli che gli si passano.
+        get_offloader().wrap_modules(
+            iter([self.embed_tokens]), prefix=f"{prefix}.embed_tokens" if prefix else "embed_tokens"
         )
         self.embed_norm = Inkling2RMSNorm(
             config.hidden_size, config.rms_norm_eps, out_dtype=None
